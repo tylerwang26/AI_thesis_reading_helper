@@ -59,7 +59,7 @@ export function AiPanel() {
 
   return (
     <aside className="flex h-full min-w-[300px] flex-col border-l border-violet-100 bg-white">
-      <div className="flex gap-1 overflow-x-auto border-b border-violet-100 px-2 py-2">
+      <div className="flex flex-wrap gap-1 border-b border-violet-100 px-2 py-2">
         {tabs.map((item) => (
           <button
             key={item.id}
@@ -85,9 +85,9 @@ export function AiPanel() {
             <p className="mt-1 text-amber-900/80">{copy.aiMissingBody}</p>
           </div>
         ) : null}
-        {aiError ? (
+        {aiError && aiError.code !== "NO_API_KEY" ? (
           <div className="rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-900">
-            {aiError.code === "NO_API_KEY" ? copy.aiMissingBody : aiError.message}
+            {aiError.message}
           </div>
         ) : null}
         {extracting ? (

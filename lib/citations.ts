@@ -1,39 +1,35 @@
 import type { PaperCitation, ReferenceItem } from "./types";
 
-export function extractPaperCitation(fullText: string): PaperCitation {
-  const lines = fullText
-    .split(/\n+/)
-    .map((l) => l.replace(/\s+/g, " ").trim())
-    .filter(Boolean);
+export function extractPaperCitation(fullText: string, fallbackTitle?: string): PaperCitation {
+  const joined = fullText.replace(/\s+/g, " ").trim();
 
-  const title =
-    lines.find(
-      (l) =>
-        l.length > 20 &&
-        !/^abstract$/i.test(l) &&
-        !/institute|university|correspondence|arxiv/i.test(l),
-    ) || "Untitled paper";
+  const authorsMatch = joined.match(
+    /((?:[A-Z]\.\s+[A-Z][a-z]+,\s*)+[A-Z]\.\s+[A-Z][a-z]+,\s+and\s+[A-Z]\.\s+[A-Z][a-z]+|[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3},\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?,\s+and\s+[A-Z][a-z]+)/,
+  );
+  const authors = authorsMatch?.[1] || "";
 
-  const authors =
-    lines.find((l) => /,\s/.test(l) && / and /i.test(l) && l.length < 200) ||
-    lines.find((l) => /^[A-Z][a-z]+\s+[A-Z]\./.test(l)) ||
-    "";
-
-  const abstractIdx = lines.findIndex((l) => /^abstract$/i.test(l));
-  let abstract = "";
-  if (abstractIdx >= 0) {
-    abstract = lines.slice(abstractIdx + 1, abstractIdx + 6).join(" ");
-  } else {
-    const joined = fullText.replace(/\s+/g, " ");
-    const m = joined.match(/Abstract[:\s]+(.{120,900}?)(?:\s+1\s+Introduction|\s+1\.\s)/i);
-    if (m) abstract = m[1].trim();
+  let title = "";
+  if (authors) {
+    const idx = joined.indexOf(authors);
+    const before = joined.slice(0, idx).trim();
+    if (before.length >= 12 && before.length <= 240) title = before;
   }
+  if (!title) {
+    const untilAbstract = joined.split(/\bAbstract\b/i)[0]?.trim() || "";
+    if (untilAbstract.length >= 12 && untilAbstract.length <= 240) title = untilAbstract;
+  }
+  if (!title) title = fallbackTitle || "Untitled paper";
 
-  const yearMatch = fullText.match(/\b(20\d{2}|19\d{2})\b/);
+  let abstract = "";
+  const abstractMatch = joined.match(
+    /\bAbstract\b[:\s]+(.{80,1400}?)(?:\s+\d+\s+Introduction|\s+1\s+Introduction|\s+Keywords\b)/i,
+  );
+  if (abstractMatch) abstract = abstractMatch[1].trim();
+
+  const yearMatch = joined.match(/\b(20\d{2}|19\d{2})\b/);
   const references = parseReferences(fullText);
-
-  const authorLast = authors.split(/,| and /i)[0]?.trim().split(/\s+/).pop() || "Anon";
   const year = yearMatch?.[1] || "";
+  const authorLast = authors.split(/,| and /i)[0]?.trim().split(/\s+/).pop() || "Anon";
   const bibtex = `@article{${slug(authorLast)}${year},
   title={${title}},
   author={${authors || "Unknown"}},
@@ -51,18 +47,13 @@ export function extractPaperCitation(fullText: string): PaperCitation {
 }
 
 export function parseReferences(fullText: string): ReferenceItem[] {
-  const split = fullText.split(/\n?\s*(?:References|Bibliography)\s*\n/i);
-  const tail = split.length > 1 ? split.slice(1).join("\n") : "";
-  const blob = (tail || fullText).replace(/\r/g, "");
+  const joined = fullText.replace(/\s+/g, " ");
+  const split = joined.split(/\b(?:References|Bibliography)\b/i);
+  const blob = split.length > 1 ? split.slice(1).join(" ") : joined;
 
-  const numbered = [...blob.matchAll(/\[(\d+)\]\s+([\s\S]*?)(?=\n\s*\[\d+\]\s|$)/g)];
+  const numbered = [...blob.matchAll(/\[(\d+)\]\s+(.+?)(?=\s*\[\d+\]\s|$)/g)];
   if (numbered.length >= 2) {
     return numbered.map((m) => decorateRef(m[2], Number(m[1])));
-  }
-
-  const dotted = [...blob.matchAll(/(?:^|\n)\s*(\d+)\.\s+([^\n]+(?:\n(?!\s*\d+\.)[^\n]+)*)/g)];
-  if (dotted.length >= 2) {
-    return dotted.map((m) => decorateRef(m[2], Number(m[1])));
   }
   return [];
 }

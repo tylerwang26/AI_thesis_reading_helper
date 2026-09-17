@@ -159,10 +159,10 @@ export function ReaderProvider({
   const urlRef = useRef<string | null>(null);
 
   const fullText = useMemo(() => pages.map((p) => p.text).join("\n\n"), [pages]);
-  const heuristicCitation = useMemo(
-    () => (pages.length ? extractPaperCitation(fullText) : null),
-    [fullText, pages.length],
-  );
+  const heuristicCitation = useMemo(() => {
+    if (!pages.length) return null;
+    return extractPaperCitation(fullText, paper?.name);
+  }, [fullText, pages.length, paper?.name]);
   const citation = citationOverride ?? heuristicCitation;
 
   const refreshLibrary = useCallback(async () => {

@@ -72,6 +72,7 @@ type ReaderContextValue = {
   outlineReady: boolean;
   setOutlineReady: (v: boolean) => void;
   outlineJump: OutlineJump | null;
+  activeOutlineId: string | null;
   goToOutline: (item: OutlineNode) => void;
   leftCollapsed: boolean;
   setLeftCollapsed: (v: boolean) => void;
@@ -145,6 +146,7 @@ export function ReaderProvider({
   const [outline, setOutline] = useState<OutlineNode[]>([]);
   const [outlineReady, setOutlineReady] = useState(false);
   const [outlineJump, setOutlineJump] = useState<OutlineJump | null>(null);
+  const [activeOutlineId, setActiveOutlineId] = useState<string | null>(null);
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [numPages, setNumPages] = useState(0);
   const [page, setPage] = useState(1);
@@ -256,6 +258,7 @@ export function ReaderProvider({
       setOutline([]);
       setOutlineReady(false);
       setOutlineJump(null);
+      setActiveOutlineId(null);
       resetAi();
     },
     [],
@@ -648,6 +651,7 @@ export function ReaderProvider({
   const goToOutline = (item: OutlineNode) => {
     if (item.page == null) return;
     setPage(item.page);
+    setActiveOutlineId(item.id);
     setOutlineJump({ page: item.page, top: item.top, nonce: Date.now() });
   };
 
@@ -685,6 +689,7 @@ export function ReaderProvider({
     outlineReady,
     setOutlineReady,
     outlineJump,
+    activeOutlineId,
     goToOutline,
     leftCollapsed,
     setLeftCollapsed,

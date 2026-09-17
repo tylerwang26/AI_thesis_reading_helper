@@ -8,6 +8,7 @@ import {
   Highlighter,
   Languages,
   Library,
+  ListTree,
   Maximize2,
   Minus,
   Plus,
@@ -17,6 +18,7 @@ import {
 } from "lucide-react";
 import { Logo } from "@/components/Logo";
 import { AiPanel } from "./AiPanel";
+import { OutlinePanel } from "./OutlinePanel";
 import { PdfPane } from "./PdfPaneDynamic";
 import { SelectionMenu } from "./SelectionMenu";
 import { useReader } from "./reader-context";
@@ -168,7 +170,7 @@ export function ReaderApp() {
       <div className="flex min-h-0 flex-1">
         <aside
           className={`flex flex-col border-r border-violet-200/80 bg-white transition-all ${
-            leftCollapsed ? "w-14" : "w-60"
+            leftCollapsed ? "w-14" : "w-64"
           }`}
         >
           <button
@@ -186,11 +188,18 @@ export function ReaderApp() {
               onClick={openFilePicker}
             />
             <NavBtn
+              icon={<ListTree className="h-4 w-4" />}
+              label={copy.outline}
+              collapsed={leftCollapsed}
+              active={leftMode === "outline"}
+              onClick={() => setLeftMode("outline")}
+            />
+            <NavBtn
               icon={<Library className="h-4 w-4" />}
               label={copy.library}
               collapsed={leftCollapsed}
               active={leftMode === "library"}
-              onClick={() => setLeftMode(leftMode === "library" ? "nav" : "library")}
+              onClick={() => setLeftMode("library")}
             />
             <NavBtn
               icon={<Star className={`h-4 w-4 ${paper?.inLibrary ? "fill-amber-400 text-amber-500" : ""}`} />}
@@ -234,9 +243,14 @@ export function ReaderApp() {
               )}
             </div>
           ) : !leftCollapsed ? (
-            <p className="mt-6 px-4 text-xs leading-5 text-violet-500">
-              {paper ? paper.name : copy.dropHint}
-            </p>
+            <div className="mt-3 min-h-0 flex-1 overflow-auto px-2 pb-4">
+              {paper ? (
+                <p className="mb-2 truncate px-1 text-[11px] text-violet-400" title={paper.name}>
+                  {paper.name}
+                </p>
+              ) : null}
+              <OutlinePanel />
+            </div>
           ) : null}
         </aside>
 

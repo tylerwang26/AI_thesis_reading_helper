@@ -6,7 +6,7 @@ This is an independent product. It is not affiliated with any commercial paper r
 
 ## Features
 
-- **PDF reader** with zoom, page indicator, download, and fullscreen
+- **PDF reader** with zoom, page indicator, left-side outline/TOC, download, and fullscreen
 - **Select → Explain / Translate** from a floating control
 - **Explain image** by dragging a region over a figure, table, or equation
 - **AI chat** about the open paper, including continue-from-explanation
@@ -14,7 +14,7 @@ This is an independent product. It is not affiliated with any commercial paper r
 - **Citation** cards for the paper and `[n]` references
 - **Auto highlight** of innovation / method / result spans
 - **Manual highlights and margin notes**
-- **Library** saved in IndexedDB (reopen in this browser)
+- **Outline** from the PDF’s bookmarks (nested tree, click to jump). Papers without bookmarks get a page list instead
 
 Without an API key, PDFs, markup, and the library still work. AI actions show a clear empty/error state.
 
@@ -58,7 +58,7 @@ Keys are read only on the server (`app/api/ai`). The browser never sees them.
 
 ## Sample paper
 
-`public/sample-paper.pdf` is a short original methods sketch used as the demo document. It includes an abstract, equation, architecture figure, results, and a numbered reference list so explain / highlight / citation have something to attach to.
+`public/sample-paper.pdf` is a short original methods sketch used as the demo document. It includes a nested bookmark outline, an abstract, equation, architecture figure, results, and a numbered reference list so outline / explain / highlight / citation have something to attach to.
 
 ## Stack
 

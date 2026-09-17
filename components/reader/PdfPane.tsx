@@ -6,6 +6,7 @@ import type { PDFDocumentProxy } from "pdfjs-dist";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
 import { itemRects, itemsIntersecting, itemsToText } from "@/lib/pdf-text";
+import { extractPdfOutline, scrollToOutlineTarget } from "@/lib/pdf-outline";
 import type { OverlayRect, PageContent, PaperHighlight, TextItemBox } from "@/lib/types";
 import { useReader } from "./reader-context";
 
@@ -33,6 +34,8 @@ export function PdfPane() {
     setNumPages,
     setPages,
     setExtracting,
+    setOutline,
+    setOutlineReady,
     setPage,
     scale,
     setSelection,
@@ -41,6 +44,7 @@ export function PdfPane() {
     numPages,
     pages,
     selection,
+    outlineJump,
   } = useReader();
   const scrollerRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(720);
@@ -68,7 +72,15 @@ export function PdfPane() {
     async (pdf: PDFDocumentProxy) => {
       setNumPages(pdf.numPages);
       setExtracting(true);
+      setOutlineReady(false);
       try {
+        try {
+          setOutline(await extractPdfOutline(pdf));
+        } catch {
+          setOutline([]);
+        } finally {
+          setOutlineReady(true);
+        }
         const extracted: PageContent[] = [];
         for (let i = 1; i <= pdf.numPages; i++) {
           const pg = await pdf.getPage(i);
@@ -101,8 +113,25 @@ export function PdfPane() {
         setExtracting(false);
       }
     },
-    [setExtracting, setNumPages, setPages],
+    [setExtracting, setNumPages, setOutline, setOutlineReady, setPages],
   );
+
+  useEffect(() => {
+    if (!outlineJump || !numPages) return;
+    const root = scrollerRef.current;
+    if (!root) return;
+    let cancelled = false;
+    let attempts = 0;
+    const run = () => {
+      if (cancelled) return;
+      if (scrollToOutlineTarget(root, outlineJump)) return;
+      if (attempts++ < 30) requestAnimationFrame(run);
+    };
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [outlineJump, numPages, paper?.url]);
 
   useEffect(() => {
     const root = scrollerRef.current;

@@ -26,6 +26,8 @@ import type {
   ExplainResult,
   HighlightColor,
   Locale,
+  OutlineJump,
+  OutlineNode,
   PageContent,
   PaperCitation,
   PaperHighlight,
@@ -63,8 +65,14 @@ type ReaderContextValue = {
   addToLibrary: () => Promise<void>;
   removeFromLibrary: (id: string) => Promise<void>;
   library: PaperRecord[];
-  leftMode: "nav" | "library";
-  setLeftMode: (m: "nav" | "library") => void;
+  leftMode: "outline" | "library";
+  setLeftMode: (m: "outline" | "library") => void;
+  outline: OutlineNode[];
+  setOutline: (nodes: OutlineNode[]) => void;
+  outlineReady: boolean;
+  setOutlineReady: (v: boolean) => void;
+  outlineJump: OutlineJump | null;
+  goToOutline: (item: OutlineNode) => void;
   leftCollapsed: boolean;
   setLeftCollapsed: (v: boolean) => void;
   numPages: number;
@@ -133,7 +141,10 @@ export function ReaderProvider({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [paper, setPaper] = useState<OpenPaper | null>(null);
   const [library, setLibrary] = useState<PaperRecord[]>([]);
-  const [leftMode, setLeftMode] = useState<"nav" | "library">("nav");
+  const [leftMode, setLeftMode] = useState<"outline" | "library">("outline");
+  const [outline, setOutline] = useState<OutlineNode[]>([]);
+  const [outlineReady, setOutlineReady] = useState(false);
+  const [outlineJump, setOutlineJump] = useState<OutlineJump | null>(null);
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [numPages, setNumPages] = useState(0);
   const [page, setPage] = useState(1);
@@ -242,6 +253,9 @@ export function ReaderProvider({
       setPage(1);
       setNumPages(0);
       setPages([]);
+      setOutline([]);
+      setOutlineReady(false);
+      setOutlineJump(null);
       resetAi();
     },
     [],
@@ -631,6 +645,12 @@ export function ReaderProvider({
     }
   };
 
+  const goToOutline = (item: OutlineNode) => {
+    if (item.page == null) return;
+    setPage(item.page);
+    setOutlineJump({ page: item.page, top: item.top, nonce: Date.now() });
+  };
+
   const continueFromExplain = () => {
     if (!explain) return;
     setTab("chat");
@@ -660,6 +680,12 @@ export function ReaderProvider({
     library,
     leftMode,
     setLeftMode,
+    outline,
+    setOutline,
+    outlineReady,
+    setOutlineReady,
+    outlineJump,
+    goToOutline,
     leftCollapsed,
     setLeftCollapsed,
     numPages,

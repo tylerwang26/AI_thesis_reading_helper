@@ -1,7 +1,7 @@
 import { writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import { PDFDocument, PDFHexString, PDFName, StandardFonts, rgb } from "pdf-lib";
 
 const PAGE_WIDTH = 612;
 const PAGE_HEIGHT = 792;
@@ -100,11 +100,14 @@ async function main() {
     y -= gap;
   };
 
+  const bookmarks = [];
+
   const addHeading = (text, level = 1) => {
     const size = level === 1 ? 13 : 12;
     const font = timesBold;
     ensure(size + 20);
     y -= 8;
+    bookmarks.push({ title: text, level, pageIndex: pageNumber - 1, y: y + 6 });
     page.drawText(text, { x: MARGIN_X, y: y - size, size, font, color: ink });
     y -= size + 10;
   };
@@ -197,7 +200,7 @@ async function main() {
   );
 
   // Figure
-  addHeading("Figure 1.  CMA reader architecture.");
+  addHeading("Figure 1.  CMA reader architecture.", 2);
   ensure(210);
   const figY = y - 190;
   page.drawRectangle({
@@ -305,6 +308,7 @@ async function main() {
   }
 
   drawFooter();
+  writeOutline(doc, bookmarks);
 
   const bytes = await doc.save();
   const out = join(dirname(fileURLToPath(import.meta.url)), "..", "public", "sample-paper.pdf");
@@ -316,3 +320,81 @@ main().catch((err) => {
   console.error(err);
   process.exit(1);
 });
+
+function nestBookmarks(bookmarks) {
+  const root = [];
+  const stack = [];
+  for (const item of bookmarks) {
+    const node = { ...item, children: [] };
+    while (stack.length && stack[stack.length - 1].level >= item.level) stack.pop();
+    if (!stack.length) root.push(node);
+    else stack[stack.length - 1].node.children.push(node);
+    stack.push({ level: item.level, node });
+  }
+  return root;
+}
+
+function descendantCount(node) {
+  return node.children.reduce((n, child) => n + 1 + descendantCount(child), 0);
+}
+
+function writeOutline(doc, bookmarks) {
+  const tree = nestBookmarks(bookmarks);
+  if (!tree.length) return;
+  const pages = doc.getPages();
+  const assignRefs = (nodes) =>
+    nodes.map((node) => ({
+      ...node,
+      ref: doc.context.nextRef(),
+      children: assignRefs(node.children),
+    }));
+  const rooted = assignRefs(tree);
+  const outlinesRef = doc.context.nextRef();
+
+  const writeNode = (node, parentRef, prevRef, nextRef) => {
+    const kids = node.children;
+    const dict = {
+      Title: PDFHexString.fromText(node.title),
+      Parent: parentRef,
+      Dest: [pages[node.pageIndex].ref, "XYZ", null, node.y, null],
+    };
+    if (prevRef) dict.Prev = prevRef;
+    if (nextRef) dict.Next = nextRef;
+    if (kids.length) {
+      dict.First = kids[0].ref;
+      dict.Last = kids[kids.length - 1].ref;
+      dict.Count = descendantCount(node);
+    }
+    doc.context.assign(node.ref, doc.context.obj(dict));
+    kids.forEach((child, i) => {
+      writeNode(
+        child,
+        node.ref,
+        i > 0 ? kids[i - 1].ref : undefined,
+        i < kids.length - 1 ? kids[i + 1].ref : undefined,
+      );
+    });
+  };
+
+  rooted.forEach((node, i) => {
+    writeNode(
+      node,
+      outlinesRef,
+      i > 0 ? rooted[i - 1].ref : undefined,
+      i < rooted.length - 1 ? rooted[i + 1].ref : undefined,
+    );
+  });
+
+  const total = rooted.reduce((n, node) => n + 1 + descendantCount(node), 0);
+  doc.context.assign(
+    outlinesRef,
+    doc.context.obj({
+      Type: "Outlines",
+      First: rooted[0].ref,
+      Last: rooted[rooted.length - 1].ref,
+      Count: total,
+    }),
+  );
+  doc.catalog.set(PDFName.of("Outlines"), outlinesRef);
+  doc.catalog.set(PDFName.of("PageMode"), PDFName.of("UseOutlines"));
+}

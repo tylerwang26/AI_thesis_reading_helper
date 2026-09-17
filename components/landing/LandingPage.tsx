@@ -6,6 +6,7 @@ import {
   BookOpen,
   Highlighter,
   Languages,
+  ListTree,
   MessageSquareText,
   Quote,
   Sparkles,
@@ -213,6 +214,12 @@ function tabFeatures(copy: Messages, tab: (typeof featureTabs)[number]) {
   if (tab === "navigation") {
     return [
       {
+        title: copy.featOutlineTitle,
+        body: copy.featOutlineBody,
+        how: copy.featOutlineHow,
+        icon: <ListTree className="h-6 w-6" />,
+      },
+      {
         title: copy.featCiteTitle,
         body: copy.featCiteBody,
         how: copy.featExplainHow,
@@ -293,9 +300,9 @@ function HeroIllustration({ copy }: { copy: Messages }) {
       </div>
       <div className="grid grid-cols-[72px_1fr_140px] gap-2">
         <div className="space-y-2 rounded-xl bg-violet-50 p-2 text-[10px] text-violet-800">
+          <div>{copy.outline}</div>
           <div>{copy.open}</div>
           <div>{copy.library}</div>
-          <div>{copy.addToLibrary}</div>
         </div>
         <div className="relative min-h-[260px] rounded-xl bg-[#fbfbfe] p-3">
           <div className="mx-auto mt-4 w-40">

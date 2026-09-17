@@ -56,6 +56,21 @@ export type PageContent = {
   height: number;
 };
 
+export type OutlineNode = {
+  id: string;
+  title: string;
+  page: number | null;
+  /** Fraction from the top of the page (0–1) when a destination Y is known. */
+  top: number | null;
+  children: OutlineNode[];
+};
+
+export type OutlineJump = {
+  page: number;
+  top: number | null;
+  nonce: number;
+};
+
 export type PaperRecord = {
   id: string;
   name: string;

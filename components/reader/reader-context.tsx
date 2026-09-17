@@ -566,7 +566,7 @@ export function ReaderProvider({
   };
 
   const runAutoHighlight = async () => {
-    if (status && !status.configured) {
+    if (!status?.configured) {
       setAiError({ code: "NO_API_KEY", message: copy.aiMissingBody });
       setToast(copy.autoHighlightNeedsAi);
       return;

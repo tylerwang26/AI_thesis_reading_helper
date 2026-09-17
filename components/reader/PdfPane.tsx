@@ -158,11 +158,14 @@ export function PdfPane() {
     const pageNode =
       (wrap.querySelector(".react-pdf__Page") as HTMLElement | null) ?? wrap;
     const r = pageNode.getBoundingClientRect();
+    const anchor = rects[0];
+    const rawX = r.left + (anchor.x + anchor.width / 2) * r.width;
+    const rawY = r.top + anchor.y * r.height;
     setSelection({
       text,
       page: pageNumber,
-      clientX: Math.min(Math.max(clientX, r.left + 24), r.right - 24),
-      clientY: Math.min(clientY, r.top) || r.top,
+      clientX: Math.min(Math.max(rawX, 96), window.innerWidth - 96),
+      clientY: Math.min(Math.max(rawY, 64), window.innerHeight - 72),
       rects,
     });
   };

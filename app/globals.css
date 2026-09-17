@@ -1,0 +1,52 @@
+@import "tailwindcss";
+
+@theme inline {
+  --font-sans: var(--font-manrope);
+  --font-display: var(--font-fraunces);
+  --color-ink: #23163a;
+}
+
+:root {
+  --background: #f6f3ff;
+  --foreground: #23163a;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), system-ui, sans-serif;
+}
+
+.font-display {
+  font-family: var(--font-display), Georgia, serif;
+}
+
+.bg-hero {
+  background: radial-gradient(1200px 500px at 20% -10%, #7c3aed 0%, transparent 50%),
+    linear-gradient(160deg, #2e1065 0%, #5b21b6 48%, #6d28d9 100%);
+}
+
+.react-pdf__Page {
+  position: relative;
+  background: white;
+}
+
+.react-pdf__Page__canvas {
+  display: block;
+  width: 100% !important;
+  height: auto !important;
+}
+
+.react-pdf__Page__textContent {
+  user-select: text;
+}
+
+.react-pdf__Page__textContent span {
+  color: transparent;
+  cursor: text;
+}

@@ -51,6 +51,7 @@ export function ReaderApp() {
     clearAutoHighlights,
     busy,
     toast,
+    notify,
     highlights,
   } = useReader();
 
@@ -60,12 +61,16 @@ export function ReaderApp() {
     a.href = paper.url;
     a.download = paper.name.endsWith(".pdf") ? paper.name : `${paper.name}.pdf`;
     a.click();
+    notify(copy.downloaded);
   };
 
   const share = async () => {
-    const url = window.location.origin + "/reader?sample=1";
+    const url = paper?.isSample
+      ? `${window.location.origin}/reader?sample=1`
+      : window.location.href;
     try {
-      await navigator.clipboard.writeText(paper?.isSample ? url : window.location.href);
+      await navigator.clipboard.writeText(url);
+      notify(copy.copied);
     } catch {
       window.prompt(copy.shareNeedHttps, url);
     }

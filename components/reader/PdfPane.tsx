@@ -5,6 +5,7 @@ import { Document, Page, pdfjs } from "react-pdf";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
+import { itemRects, itemsIntersecting, itemsToText } from "@/lib/pdf-text";
 import type { OverlayRect, PageContent, PaperHighlight, TextItemBox } from "@/lib/types";
 import { useReader } from "./reader-context";
 
@@ -20,6 +21,8 @@ const colorClass: Record<PaperHighlight["color"], string> = {
   orange: "bg-amber-300/50",
 };
 
+type DragBox = { x: number; y: number; w: number; h: number; page: number };
+
 export function PdfPane() {
   const {
     copy,
@@ -31,17 +34,25 @@ export function PdfPane() {
     setPages,
     setExtracting,
     setPage,
-    page,
     scale,
     setSelection,
     regionMode,
     runExplain,
     numPages,
+    pages,
+    selection,
   } = useReader();
   const scrollerRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(720);
-  const [drag, setDrag] = useState<{ x: number; y: number; w: number; h: number; page: number } | null>(null);
-  const dragOrigin = useRef<{ x: number; y: number; page: number } | null>(null);
+  const [regionBox, setRegionBox] = useState<DragBox | null>(null);
+  const [liveRects, setLiveRects] = useState<{ page: number; rects: OverlayRect[] } | null>(null);
+  const regionDrag = useRef<{ x: number; y: number; page: number } | null>(null);
+  const textDrag = useRef<{
+    page: number;
+    x0: number;
+    y0: number;
+    pointerId: number;
+  } | null>(null);
 
   useEffect(() => {
     const el = scrollerRef.current;
@@ -67,8 +78,8 @@ export function PdfPane() {
           for (const raw of content.items) {
             if (!("str" in raw)) continue;
             const t = raw.transform;
-            const height = raw.height || Math.abs(t[3]) || 10;
-            const itemWidth = raw.width || Math.abs(t[0]) * raw.str.length * 0.5 || 4;
+            const height = Math.abs(raw.height || t[3] || 10);
+            const itemWidth = raw.width || Math.abs(t[0]) || 4;
             items.push({
               str: raw.str,
               x: t[4],
@@ -95,31 +106,6 @@ export function PdfPane() {
 
   useEffect(() => {
     const root = scrollerRef.current;
-    if (!root) return;
-    const onUp = () => {
-      const sel = window.getSelection();
-      if (!sel || sel.isCollapsed) return;
-      const text = sel.toString().replace(/\s+/g, " ").trim();
-      if (text.length < 2) return;
-      const node = sel.anchorNode;
-      const el = node instanceof Element ? node : node?.parentElement;
-      if (!el || !root.contains(el)) return;
-      const pageEl = el.closest("[data-page-number]");
-      const pageNumber = Number(pageEl?.getAttribute("data-page-number") || page);
-      const rect = sel.getRangeAt(0).getBoundingClientRect();
-      setSelection({
-        text,
-        page: pageNumber,
-        clientX: rect.left + rect.width / 2,
-        clientY: rect.top,
-      });
-    };
-    document.addEventListener("mouseup", onUp);
-    return () => document.removeEventListener("mouseup", onUp);
-  }, [page, setSelection]);
-
-  useEffect(() => {
-    const root = scrollerRef.current;
     if (!root || !numPages) return;
     const els = [...root.querySelectorAll("[data-page-number]")];
     const obs = new IntersectionObserver(
@@ -138,60 +124,148 @@ export function PdfPane() {
     return () => obs.disconnect();
   }, [numPages, paper?.url, setPage]);
 
-  const startDrag = (event: React.MouseEvent, pageNumber: number) => {
-    if (!regionMode) return;
-    const wrap = event.currentTarget.getBoundingClientRect();
-    const x = event.clientX - wrap.left;
-    const y = event.clientY - wrap.top;
-    dragOrigin.current = { x, y, page: pageNumber };
-    setDrag({ x, y, w: 0, h: 0, page: pageNumber });
+  const pageContent = (pageNumber: number) => pages.find((p) => p.pageNumber === pageNumber);
+
+  const clientToPdf = (wrap: HTMLElement, clientX: number, clientY: number, content: PageContent) => {
+    const pageNode =
+      (wrap.querySelector(".react-pdf__Page") as HTMLElement | null) ?? wrap;
+    const r = pageNode.getBoundingClientRect();
+    return {
+      x: ((clientX - r.left) / Math.max(r.width, 1)) * content.width,
+      y: ((clientY - r.top) / Math.max(r.height, 1)) * content.height,
+    };
   };
 
-  const moveDrag = (event: React.MouseEvent) => {
-    if (!dragOrigin.current) return;
-    const wrap = event.currentTarget.getBoundingClientRect();
-    const x = event.clientX - wrap.left;
-    const y = event.clientY - wrap.top;
-    const o = dragOrigin.current;
-    setDrag({
-      x: Math.min(o.x, x),
-      y: Math.min(o.y, y),
-      w: Math.abs(x - o.x),
-      h: Math.abs(y - o.y),
-      page: o.page,
+  const finishTextSelect = (
+    wrap: HTMLElement,
+    pageNumber: number,
+    content: PageContent,
+    x0: number,
+    y0: number,
+    clientX: number,
+    clientY: number,
+  ) => {
+    const end = clientToPdf(wrap, clientX, clientY, content);
+    const items = itemsIntersecting(content, x0, y0, end.x, end.y);
+    const text = itemsToText(items);
+    const rects = itemRects(content, items);
+    textDrag.current = null;
+    if (text.length < 2) {
+      setLiveRects(null);
+      return;
+    }
+    setLiveRects(null);
+    const pageNode =
+      (wrap.querySelector(".react-pdf__Page") as HTMLElement | null) ?? wrap;
+    const r = pageNode.getBoundingClientRect();
+    setSelection({
+      text,
+      page: pageNumber,
+      clientX: Math.min(Math.max(clientX, r.left + 24), r.right - 24),
+      clientY: Math.min(clientY, r.top) || r.top,
+      rects,
     });
   };
 
-  const endDrag = async (event: React.MouseEvent) => {
-    if (!dragOrigin.current || !drag) {
-      dragOrigin.current = null;
-      setDrag(null);
-      return;
-    }
-    const wrapEl = event.currentTarget as HTMLElement;
-    const canvas = wrapEl.querySelector("canvas");
-    const box = drag;
-    dragOrigin.current = null;
-    setDrag(null);
+  const cropRegion = async (
+    wrap: HTMLElement,
+    box: { x: number; y: number; w: number; h: number },
+  ) => {
+    const canvas = wrap.querySelector("canvas");
     if (!canvas || box.w < 8 || box.h < 8) return;
-    const scaleX = canvas.width / wrapEl.clientWidth;
+    const canvasRect = canvas.getBoundingClientRect();
+    const wrapRect = wrap.getBoundingClientRect();
+    const left = box.x - (canvasRect.left - wrapRect.left);
+    const top = box.y - (canvasRect.top - wrapRect.top);
+    const scaleX = canvas.width / Math.max(canvasRect.width, 1);
+    const scaleY = canvas.height / Math.max(canvasRect.height, 1);
+    const sx = Math.max(0, left * scaleX);
+    const sy = Math.max(0, top * scaleY);
+    const sw = Math.min(canvas.width - sx, box.w * scaleX);
+    const sh = Math.min(canvas.height - sy, box.h * scaleY);
+    if (sw < 2 || sh < 2) return;
     const tmp = document.createElement("canvas");
-    tmp.width = Math.max(1, Math.floor(box.w * scaleX));
-    tmp.height = Math.max(1, Math.floor(box.h * scaleX));
+    tmp.width = Math.max(1, Math.floor(sw));
+    tmp.height = Math.max(1, Math.floor(sh));
     const ctx = tmp.getContext("2d");
     if (!ctx) return;
-    ctx.drawImage(
-      canvas,
-      box.x * scaleX,
-      box.y * scaleX,
-      tmp.width,
-      tmp.height,
-      0,
-      0,
-      tmp.width,
-      tmp.height,
-    );
+    ctx.drawImage(canvas, sx, sy, sw, sh, 0, 0, tmp.width, tmp.height);
     await runExplain(undefined, tmp.toDataURL("image/png"));
+  };
+
+  const onPointerDown = (event: React.PointerEvent<HTMLDivElement>, pageNumber: number) => {
+    if (event.button !== 0) return;
+    const wrap = event.currentTarget;
+    if (regionMode) {
+      event.preventDefault();
+      const rect = wrap.getBoundingClientRect();
+      const x = event.clientX - rect.left;
+      const y = event.clientY - rect.top;
+      regionDrag.current = { x, y, page: pageNumber };
+      setRegionBox({ x, y, w: 0, h: 0, page: pageNumber });
+      wrap.setPointerCapture(event.pointerId);
+      return;
+    }
+    const content = pageContent(pageNumber);
+    if (!content) return;
+    event.preventDefault();
+    const start = clientToPdf(wrap, event.clientX, event.clientY, content);
+    textDrag.current = { page: pageNumber, x0: start.x, y0: start.y, pointerId: event.pointerId };
+    setLiveRects(null);
+    setSelection(null);
+    wrap.setPointerCapture(event.pointerId);
+  };
+
+  const onPointerMove = (event: React.PointerEvent<HTMLDivElement>, pageNumber: number) => {
+    const wrap = event.currentTarget;
+    if (regionDrag.current) {
+      const rect = wrap.getBoundingClientRect();
+      const x = event.clientX - rect.left;
+      const y = event.clientY - rect.top;
+      const o = regionDrag.current;
+      setRegionBox({
+        x: Math.min(o.x, x),
+        y: Math.min(o.y, y),
+        w: Math.abs(x - o.x),
+        h: Math.abs(y - o.y),
+        page: o.page,
+      });
+      return;
+    }
+    const drag = textDrag.current;
+    if (!drag || drag.page !== pageNumber) return;
+    const content = pageContent(pageNumber);
+    if (!content) return;
+    const end = clientToPdf(wrap, event.clientX, event.clientY, content);
+    const items = itemsIntersecting(content, drag.x0, drag.y0, end.x, end.y);
+    setLiveRects({ page: pageNumber, rects: itemRects(content, items) });
+  };
+
+  const onPointerUp = (event: React.PointerEvent<HTMLDivElement>, pageNumber: number) => {
+    const wrap = event.currentTarget;
+    if (regionDrag.current) {
+      const origin = regionDrag.current;
+      const rect = wrap.getBoundingClientRect();
+      const x = event.clientX - rect.left;
+      const y = event.clientY - rect.top;
+      const box = {
+        x: Math.min(origin.x, x),
+        y: Math.min(origin.y, y),
+        w: Math.abs(x - origin.x),
+        h: Math.abs(y - origin.y),
+      };
+      regionDrag.current = null;
+      setRegionBox(null);
+      void cropRegion(wrap, box);
+      return;
+    }
+    const drag = textDrag.current;
+    const content = pageContent(pageNumber);
+    if (!drag || !content || drag.page !== pageNumber) {
+      textDrag.current = null;
+      return;
+    }
+    finishTextSelect(wrap, pageNumber, content, drag.x0, drag.y0, event.clientX, event.clientY);
   };
 
   if (!paper) {
@@ -220,6 +294,9 @@ export function PdfPane() {
   }
 
   const pageWidth = Math.min(width, 920) * scale;
+  const selectionRects =
+    liveRects ??
+    (selection?.rects?.length ? { page: selection.page, rects: selection.rects } : null);
 
   return (
     <div ref={scrollerRef} className="h-full overflow-auto bg-[#f3f0fb] px-4 py-6">
@@ -236,26 +313,54 @@ export function PdfPane() {
             <div
               key={pageNumber}
               data-page-number={pageNumber}
-              className="relative mx-auto mb-6 w-fit shadow-xl shadow-violet-950/10"
-              onMouseDown={(e) => startDrag(e, pageNumber)}
-              onMouseMove={moveDrag}
-              onMouseUp={(e) => void endDrag(e)}
+              className={`relative mx-auto mb-6 w-fit shadow-xl shadow-violet-950/10 ${
+                regionMode ? "cursor-crosshair" : "cursor-text"
+              }`}
+              onPointerDown={(e) => onPointerDown(e, pageNumber)}
+              onPointerMove={(e) => onPointerMove(e, pageNumber)}
+              onPointerUp={(e) => onPointerUp(e, pageNumber)}
+              onPointerCancel={() => {
+                regionDrag.current = null;
+                textDrag.current = null;
+                setRegionBox(null);
+                setLiveRects(null);
+              }}
             >
               <Page
                 pageNumber={pageNumber}
                 width={pageWidth}
                 renderTextLayer
-                renderAnnotationLayer
+                renderAnnotationLayer={false}
                 loading=""
               />
               <HighlightLayer marks={marks} />
-              {regionMode ? (
-                <div className="absolute inset-0 cursor-crosshair bg-violet-900/5" />
+              {selectionRects?.page === pageNumber ? (
+                <HighlightLayer
+                  marks={[
+                    {
+                      id: "live-selection",
+                      page: pageNumber,
+                      text: "",
+                      color: "blue",
+                      kind: "manual",
+                      rects: selectionRects.rects,
+                      createdAt: 0,
+                    },
+                  ]}
+                />
               ) : null}
-              {drag && drag.page === pageNumber ? (
+              {regionMode ? (
+                <div className="pointer-events-none absolute inset-0 bg-violet-900/5" />
+              ) : null}
+              {regionBox && regionBox.page === pageNumber ? (
                 <div
                   className="pointer-events-none absolute border-2 border-violet-600 bg-violet-400/20"
-                  style={{ left: drag.x, top: drag.y, width: drag.w, height: drag.h }}
+                  style={{
+                    left: regionBox.x,
+                    top: regionBox.y,
+                    width: regionBox.w,
+                    height: regionBox.h,
+                  }}
                 />
               ) : null}
             </div>
@@ -268,7 +373,7 @@ export function PdfPane() {
 
 function HighlightLayer({ marks }: { marks: PaperHighlight[] }) {
   return (
-    <div className="pointer-events-none absolute inset-0">
+    <div className="pointer-events-none absolute inset-0 z-[2]">
       {marks.flatMap((mark) =>
         mark.rects.map((rect: OverlayRect, i) => (
           <div

@@ -97,21 +97,31 @@ export function AiPanel() {
         {tab === "explain" ? (
           <section>
             <h3 className="mb-2 font-medium text-violet-950">{copy.explainFigure}</h3>
-            {busy === "explain" ? (
+            {busy === "explain" && !explain?.image ? (
               <Skeleton />
             ) : explain ? (
               <div className="rounded-2xl border border-violet-100 bg-violet-50/60 p-4">
+                {explain.image ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={explain.image}
+                    alt=""
+                    className="mb-3 max-h-48 w-full rounded-lg border border-violet-100 object-contain bg-white"
+                  />
+                ) : null}
                 {explain.selection ? (
                   <p className="mb-2 text-xs italic text-violet-700">“{explain.selection}”</p>
                 ) : null}
-                <Formatted text={explain.body} />
-                <button
-                  type="button"
-                  className="mt-3 text-xs font-medium text-violet-800 underline"
-                  onClick={continueFromExplain}
-                >
-                  {copy.continueChat}
-                </button>
+                {explain.body ? <Formatted text={explain.body} /> : null}
+                {explain.body ? (
+                  <button
+                    type="button"
+                    className="mt-3 text-xs font-medium text-violet-800 underline"
+                    onClick={continueFromExplain}
+                  >
+                    {copy.continueChat}
+                  </button>
+                ) : null}
               </div>
             ) : (
               <p className="text-sm text-violet-800/70">{copy.noSelection}</p>

@@ -4,6 +4,38 @@ export function itemsToText(items: TextItemBox[]) {
   return items.map((i) => i.str).join(" ").replace(/\s+/g, " ").trim();
 }
 
+export function itemsIntersecting(
+  page: PageContent,
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+): TextItemBox[] {
+  const left = Math.min(x0, x1);
+  const right = Math.max(x0, x1);
+  const top = Math.min(y0, y1);
+  const bottom = Math.max(y0, y1);
+  if (right - left < 1 && bottom - top < 1) return [];
+  return page.items.filter((it) => {
+    if (!it.str.trim()) return false;
+    return (
+      it.x < right &&
+      it.x + Math.max(it.width, 1) > left &&
+      it.y < bottom &&
+      it.y + Math.max(it.height, 1) > top
+    );
+  });
+}
+
+export function itemRects(page: PageContent, items: TextItemBox[]): OverlayRect[] {
+  return items.map((it) => ({
+    x: it.x / page.width,
+    y: it.y / page.height,
+    width: Math.max(it.width, 1) / page.width,
+    height: Math.max(it.height, 1) / page.height,
+  }));
+}
+
 export function matchQuoteOnPage(page: PageContent, quote: string): OverlayRect[] {
   const needle = normalize(quote);
   if (!needle || needle.length < 8) return [];

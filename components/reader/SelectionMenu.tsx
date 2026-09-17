@@ -64,6 +64,13 @@ export function SelectionMenu() {
           onClick={() => addManualHighlight(color)}
         />
       ))}
+      <button
+        className="rounded-full px-2 py-1 font-medium hover:bg-violet-50"
+        type="button"
+        onClick={() => addManualHighlight("yellow", "")}
+      >
+        {copy.addNote}
+      </button>
       <button className="px-1 text-violet-400" type="button" onClick={() => setSelection(null)}>
         ×
       </button>

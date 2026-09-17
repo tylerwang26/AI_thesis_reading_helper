@@ -110,6 +110,7 @@ type ReaderContextValue = {
   runCitation: (text?: string) => Promise<void>;
   continueFromExplain: () => void;
   toast: string | null;
+  notify: (message: string) => void;
 };
 
 const Ctx = createContext<ReaderContextValue | null>(null);
@@ -136,7 +137,7 @@ export function ReaderProvider({
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [numPages, setNumPages] = useState(0);
   const [page, setPage] = useState(1);
-  const [scale, setScale] = useState(1.1);
+  const [scale, setScale] = useState(1);
   const [pages, setPages] = useState<PageContent[]>([]);
   const [extracting, setExtracting] = useState(false);
   const [highlights, setHighlights] = useState<PaperHighlight[]>([]);
@@ -246,19 +247,51 @@ export function ReaderProvider({
     [],
   );
 
+  const persistOpened = useCallback(
+    async (
+      meta: { id: string; name: string; blob: Blob; isSample?: boolean },
+      nextHighlights: PaperHighlight[],
+    ) => {
+      await savePaper({
+        id: meta.id,
+        name: meta.name,
+        addedAt: Date.now(),
+        lastOpened: Date.now(),
+        isSample: meta.isSample,
+        blob: meta.blob,
+        highlights: nextHighlights,
+      });
+    },
+    [],
+  );
+
   const openSample = useCallback(async () => {
     const res = await fetch(SAMPLE_URL);
     const blob = await res.blob();
     const saved = await getPaper(SAMPLE_ID).catch(() => null);
+    let marks = saved?.highlights || [];
+    if (!marks.length) {
+      try {
+        const raw = localStorage.getItem(`thesis-helper-marks:${SAMPLE_ID}`);
+        marks = raw ? (JSON.parse(raw) as PaperHighlight[]) : [];
+      } catch {
+        marks = [];
+      }
+    }
     openBlob({
       id: SAMPLE_ID,
       name: SAMPLE_NAME,
       blob,
       isSample: true,
-      inLibrary: Boolean(saved),
+      inLibrary: true,
     });
-    loadHighlights(SAMPLE_ID, saved?.highlights);
-  }, [loadHighlights, openBlob]);
+    loadHighlights(SAMPLE_ID, marks);
+    await persistOpened(
+      { id: SAMPLE_ID, name: SAMPLE_NAME, blob, isSample: true },
+      marks,
+    );
+    await refreshLibrary();
+  }, [loadHighlights, openBlob, persistOpened, refreshLibrary]);
 
   const openFromLibrary = useCallback(
     async (id: string) => {
@@ -281,10 +314,14 @@ export function ReaderProvider({
   const onFile = useCallback(
     async (file: File) => {
       const id = crypto.randomUUID();
-      openBlob({ id, name: file.name, blob: file, inLibrary: false });
+      openBlob({ id, name: file.name, blob: file, inLibrary: true });
       loadHighlights(id);
+      await persistOpened({ id, name: file.name, blob: file }, []);
+      await refreshLibrary();
+      setLeftMode("library");
+      setToast(copy.saved);
     },
-    [loadHighlights, openBlob],
+    [copy.saved, loadHighlights, openBlob, persistOpened, refreshLibrary],
   );
 
   useEffect(() => {
@@ -331,7 +368,12 @@ export function ReaderProvider({
   const addManualHighlight = (color: HighlightColor, note?: string) => {
     if (!selection || !paper) return;
     const pageContent = pages.find((p) => p.pageNumber === selection.page);
-    const rects = pageContent ? matchQuoteOnPage(pageContent, selection.text) : [];
+    const rects =
+      selection.rects?.length
+        ? selection.rects
+        : pageContent
+          ? matchQuoteOnPage(pageContent, selection.text)
+          : [];
     const mark: PaperHighlight = {
       id: crypto.randomUUID(),
       page: selection.page,
@@ -408,6 +450,16 @@ export function ReaderProvider({
   const runExplain = async (text?: string, image?: string) => {
     const selectionText = text ?? selection?.text;
     setTab("explain");
+    if (image) {
+      setExplain({
+        title: copy.explainFigure,
+        body: "",
+        selection: selectionText,
+        image,
+      });
+      setRegionMode(false);
+      setToast(copy.regionCaptured);
+    }
     setBusy("explain");
     try {
       const data = await requestAi<ExplainResult>({
@@ -415,10 +467,10 @@ export function ReaderProvider({
         selection: selectionText,
         image,
       });
-      setExplain(data);
+      setExplain({ ...data, image: image || data.image });
       setSelection(null);
     } catch {
-      setExplain(null);
+      if (!image) setExplain(null);
     } finally {
       setBusy(null);
     }
@@ -514,6 +566,11 @@ export function ReaderProvider({
   };
 
   const runAutoHighlight = async () => {
+    if (status && !status.configured) {
+      setAiError({ code: "NO_API_KEY", message: copy.aiMissingBody });
+      setToast(copy.autoHighlightNeedsAi);
+      return;
+    }
     setBusy("highlight");
     try {
       const data = await requestAi<{
@@ -648,6 +705,7 @@ export function ReaderProvider({
     runCitation,
     continueFromExplain,
     toast,
+    notify: setToast,
   };
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

@@ -75,6 +75,7 @@ export type SelectionState = {
   page: number;
   clientX: number;
   clientY: number;
+  rects?: OverlayRect[];
 };
 
 export type TranslatePair = {
@@ -111,4 +112,5 @@ export type ExplainResult = {
   title: string;
   body: string;
   selection?: string;
+  image?: string;
 };

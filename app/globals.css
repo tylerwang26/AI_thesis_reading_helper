@@ -36,17 +36,18 @@ body {
   background: white;
 }
 
-.react-pdf__Page__canvas {
-  display: block;
-  width: 100% !important;
-  height: auto !important;
+/* pdf.js sizes canvas + text layer together. Do not CSS-scale the canvas
+   independently or glyph hit-testing / ::selection will miss the ink. */
+.react-pdf__Page canvas {
+  max-width: none !important;
 }
 
-.react-pdf__Page__textContent {
+.react-pdf__Page__textContent,
+.react-pdf__Page .textLayer {
+  pointer-events: auto;
   user-select: text;
 }
 
-.react-pdf__Page__textContent span {
-  color: transparent;
-  cursor: text;
+.react-pdf__Page__annotations {
+  pointer-events: none;
 }

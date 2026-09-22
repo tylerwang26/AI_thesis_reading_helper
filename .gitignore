@@ -43,3 +43,7 @@ public/pdf.worker.min.mjs
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+-e 
+# Cloudflare build artifacts
+.open-next/
+.wrangler/

@@ -129,3 +129,16 @@ export type ExplainResult = {
   selection?: string;
   image?: string;
 };
+
+export type PaperPanelSession = {
+  tab?: AiTab;
+  explain: ExplainResult | null;
+  translations: TranslatePair[];
+  targetLanguage?: string;
+  summary: string;
+  threeLine: string;
+  chat: ChatMessage[];
+  citation: PaperCitation | null;
+  lookedUp: ReferenceItem | null;
+  updatedAt: number;
+};

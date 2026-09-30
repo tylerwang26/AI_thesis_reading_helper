@@ -1,8 +1,9 @@
-import type { PaperHighlight, StoredPaper } from "./types";
+import type { PaperHighlight, PaperPanelSession, StoredPaper } from "./types";
 
 const DB_NAME = "thesis-helper";
 const STORE = "papers";
-const VERSION = 1;
+const SESSION_STORE = "sessions";
+const VERSION = 2;
 
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -11,6 +12,9 @@ function openDb(): Promise<IDBDatabase> {
       const db = req.result;
       if (!db.objectStoreNames.contains(STORE)) {
         db.createObjectStore(STORE, { keyPath: "id" });
+      }
+      if (!db.objectStoreNames.contains(SESSION_STORE)) {
+        db.createObjectStore(SESSION_STORE, { keyPath: "id" });
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -82,4 +86,31 @@ export async function updateHighlights(id: string, highlights: PaperHighlight[])
   const existing = await getPaper(id);
   if (!existing) return;
   await savePaper({ ...existing, highlights, lastOpened: Date.now() });
+}
+
+export async function savePanel(id: string, panel: PaperPanelSession) {
+  const db = await openDb();
+  const tx = db.transaction(SESSION_STORE, "readwrite");
+  tx.objectStore(SESSION_STORE).put({ id, ...panel });
+  await txDone(tx);
+  db.close();
+}
+
+export async function getPanel(id: string): Promise<PaperPanelSession | null> {
+  const db = await openDb();
+  if (!db.objectStoreNames.contains(SESSION_STORE)) {
+    db.close();
+    return null;
+  }
+  const tx = db.transaction(SESSION_STORE, "readonly");
+  const req = tx.objectStore(SESSION_STORE).get(id);
+  const row = await new Promise<(PaperPanelSession & { id: string }) | undefined>((resolve, reject) => {
+    req.onsuccess = () => resolve(req.result as (PaperPanelSession & { id: string }) | undefined);
+    req.onerror = () => reject(req.error);
+  });
+  await txDone(tx);
+  db.close();
+  if (!row) return null;
+  const { id: _id, ...panel } = row;
+  return panel;
 }

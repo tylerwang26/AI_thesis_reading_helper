@@ -14,8 +14,10 @@ import { t } from "@/lib/i18n";
 import {
   deletePaper,
   getPaper,
+  getPanel,
   listLibrary,
   savePaper,
+  savePanel,
   updateHighlights,
 } from "@/lib/library";
 import { clipContext, matchQuoteOnPage, paragraphBlocks } from "@/lib/pdf-text";
@@ -31,6 +33,7 @@ import type {
   PageContent,
   PaperCitation,
   PaperHighlight,
+  PaperPanelSession,
   PaperRecord,
   ReferenceItem,
   SelectionState,
@@ -40,6 +43,22 @@ import type {
 const SAMPLE_ID = "sample";
 const SAMPLE_URL = "/sample-paper.pdf";
 const SAMPLE_NAME = "Contextual Memory Attention (sample)";
+const PANEL_KEY = (id: string) => `thesis-helper-panel:${id}`;
+
+function emptyPanel(): PaperPanelSession {
+  return {
+    tab: "explain",
+    explain: null,
+    translations: [],
+    targetLanguage: "Traditional Chinese",
+    summary: "",
+    threeLine: "",
+    chat: [],
+    citation: null,
+    lookedUp: null,
+    updatedAt: Date.now(),
+  };
+}
 
 type OpenPaper = {
   id: string;
@@ -171,6 +190,9 @@ export function ReaderProvider({
   const [lookedUp, setLookedUp] = useState<ReferenceItem | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const urlRef = useRef<string | null>(null);
+  const paperRef = useRef<OpenPaper | null>(null);
+  const sessionRef = useRef<PaperPanelSession>(emptyPanel());
+  const persistTimer = useRef<number | null>(null);
 
   const fullText = useMemo(() => pages.map((p) => p.text).join("\n\n"), [pages]);
   const heuristicCitation = useMemo(() => {
@@ -201,6 +223,102 @@ export function ReaderProvider({
     return () => window.clearTimeout(id);
   }, [toast]);
 
+  const writePanel = useCallback(async (id: string, panel: PaperPanelSession) => {
+    try {
+      await savePanel(id, panel);
+    } catch {
+      try {
+        await savePanel(id, {
+          ...panel,
+          explain: panel.explain ? { ...panel.explain, image: undefined } : null,
+        });
+      } catch {
+        // ignore quota
+      }
+    }
+    try {
+      const slim: PaperPanelSession = {
+        ...panel,
+        explain: panel.explain ? { ...panel.explain, image: undefined } : null,
+      };
+      localStorage.setItem(PANEL_KEY(id), JSON.stringify(slim));
+    } catch {
+      try {
+        localStorage.setItem(
+          PANEL_KEY(id),
+          JSON.stringify({ ...panel, explain: null, chat: panel.chat.slice(-20) }),
+        );
+      } catch {
+        // ignore
+      }
+    }
+  }, []);
+
+  const flushPanel = useCallback(
+    (id?: string | null) => {
+      const pid = id ?? paperRef.current?.id;
+      if (!pid) return;
+      if (persistTimer.current) {
+        window.clearTimeout(persistTimer.current);
+        persistTimer.current = null;
+      }
+      void writePanel(pid, sessionRef.current);
+    },
+    [writePanel],
+  );
+
+  const schedulePanel = useCallback(
+    (id?: string | null) => {
+      const pid = id ?? paperRef.current?.id;
+      if (!pid) return;
+      if (persistTimer.current) window.clearTimeout(persistTimer.current);
+      persistTimer.current = window.setTimeout(() => {
+        persistTimer.current = null;
+        void writePanel(pid, sessionRef.current);
+      }, 400);
+    },
+    [writePanel],
+  );
+
+  const patchPanel = useCallback(
+    (partial: Partial<PaperPanelSession>, immediate = true) => {
+      sessionRef.current = { ...sessionRef.current, ...partial, updatedAt: Date.now() };
+      if (immediate) flushPanel();
+      else schedulePanel();
+    },
+    [flushPanel, schedulePanel],
+  );
+
+  const readStoredPanel = useCallback(async (id: string): Promise<PaperPanelSession | null> => {
+    try {
+      const stored = await getPanel(id);
+      if (stored) return stored;
+    } catch {
+      // ignore
+    }
+    try {
+      const raw = localStorage.getItem(PANEL_KEY(id));
+      return raw ? (JSON.parse(raw) as PaperPanelSession) : null;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const applyPanel = useCallback((panel: PaperPanelSession | null) => {
+    const next = panel ?? emptyPanel();
+    sessionRef.current = next;
+    setTab(next.tab || "explain");
+    setExplain(next.explain);
+    setTranslations(next.translations || []);
+    if (next.targetLanguage) setTargetLanguage(next.targetLanguage);
+    setSummary(next.summary || "");
+    setThreeLine(next.threeLine || "");
+    setChat(next.chat || []);
+    setCitationOverride(next.citation);
+    setLookedUp(next.lookedUp);
+    setAiError(null);
+  }, []);
+
   const persistHighlights = useCallback(
     async (id: string, next: PaperHighlight[], inLibrary: boolean) => {
       localStorage.setItem(`thesis-helper-marks:${id}`, JSON.stringify(next));
@@ -228,30 +346,24 @@ export function ReaderProvider({
     }
   }, []);
 
-  const resetAi = () => {
-    setExplain(null);
-    setTranslations([]);
-    setSummary("");
-    setThreeLine("");
-    setChat([]);
-    setCitationOverride(null);
-    setLookedUp(null);
-    setAiError(null);
-  };
-
   const openBlob = useCallback(
     (meta: { id: string; name: string; blob: Blob; isSample?: boolean; inLibrary: boolean }) => {
+      if (paperRef.current?.id && paperRef.current.id !== meta.id) {
+        flushPanel(paperRef.current.id);
+      }
       if (urlRef.current) URL.revokeObjectURL(urlRef.current);
       const url = URL.createObjectURL(meta.blob);
       urlRef.current = url;
-      setPaper({
+      const nextPaper = {
         id: meta.id,
         name: meta.name,
         url,
         blob: meta.blob,
         isSample: meta.isSample,
         inLibrary: meta.inLibrary,
-      });
+      };
+      paperRef.current = nextPaper;
+      setPaper(nextPaper);
       setPage(1);
       setNumPages(0);
       setPages([]);
@@ -259,9 +371,8 @@ export function ReaderProvider({
       setOutlineReady(false);
       setOutlineJump(null);
       setActiveOutlineId(null);
-      resetAi();
     },
-    [],
+    [flushPanel],
   );
 
   const persistOpened = useCallback(
@@ -269,14 +380,16 @@ export function ReaderProvider({
       meta: { id: string; name: string; blob: Blob; isSample?: boolean },
       nextHighlights: PaperHighlight[],
     ) => {
+      const existing = await getPaper(meta.id).catch(() => null);
       await savePaper({
         id: meta.id,
         name: meta.name,
-        addedAt: Date.now(),
+        addedAt: existing?.addedAt ?? Date.now(),
         lastOpened: Date.now(),
         isSample: meta.isSample,
         blob: meta.blob,
-        highlights: nextHighlights,
+        highlights: nextHighlights.length ? nextHighlights : existing?.highlights || [],
+        pageCount: existing?.pageCount,
       });
     },
     [],
@@ -295,6 +408,7 @@ export function ReaderProvider({
         marks = [];
       }
     }
+    const savedPanel = await readStoredPanel(SAMPLE_ID);
     openBlob({
       id: SAMPLE_ID,
       name: SAMPLE_NAME,
@@ -303,17 +417,19 @@ export function ReaderProvider({
       inLibrary: true,
     });
     loadHighlights(SAMPLE_ID, marks);
+    applyPanel(savedPanel);
     await persistOpened(
       { id: SAMPLE_ID, name: SAMPLE_NAME, blob, isSample: true },
       marks,
     );
     await refreshLibrary();
-  }, [loadHighlights, openBlob, persistOpened, refreshLibrary]);
+  }, [applyPanel, loadHighlights, openBlob, persistOpened, readStoredPanel, refreshLibrary]);
 
   const openFromLibrary = useCallback(
     async (id: string) => {
       const row = await getPaper(id);
       if (!row) return;
+      const savedPanel = await readStoredPanel(id);
       openBlob({
         id: row.id,
         name: row.name,
@@ -322,10 +438,11 @@ export function ReaderProvider({
         inLibrary: true,
       });
       loadHighlights(row.id, row.highlights);
+      applyPanel(savedPanel);
       await savePaper({ ...row, lastOpened: Date.now() });
       await refreshLibrary();
     },
-    [loadHighlights, openBlob, refreshLibrary],
+    [applyPanel, loadHighlights, openBlob, readStoredPanel, refreshLibrary],
   );
 
   const onFile = useCallback(
@@ -333,12 +450,13 @@ export function ReaderProvider({
       const id = crypto.randomUUID();
       openBlob({ id, name: file.name, blob: file, inLibrary: true });
       loadHighlights(id);
+      applyPanel(null);
       await persistOpened({ id, name: file.name, blob: file }, []);
       await refreshLibrary();
       setLeftMode("library");
       setToast(copy.saved);
     },
-    [copy.saved, loadHighlights, openBlob, persistOpened, refreshLibrary],
+    [copy.saved, applyPanel, loadHighlights, openBlob, persistOpened, refreshLibrary],
   );
 
   useEffect(() => {
@@ -372,13 +490,18 @@ export function ReaderProvider({
       highlights,
     });
     setPaper({ ...paper, inLibrary: true });
+    paperRef.current = { ...paper, inLibrary: true };
     await refreshLibrary();
     setToast(copy.saved);
   };
 
   const removeFromLibrary = async (id: string) => {
     await deletePaper(id);
-    if (paper?.id === id) setPaper({ ...paper, inLibrary: false });
+    if (paper?.id === id) {
+      const next = { ...paper, inLibrary: false };
+      setPaper(next);
+      paperRef.current = next;
+    }
     await refreshLibrary();
   };
 
@@ -406,6 +529,7 @@ export function ReaderProvider({
     void persistHighlights(paper.id, next, paper.inLibrary);
     setSelection(null);
     setTab("notes");
+    patchPanel({ tab: "notes" });
   };
 
   const updateNote = (id: string, note: string) => {
@@ -467,13 +591,16 @@ export function ReaderProvider({
   const runExplain = async (text?: string, image?: string) => {
     const selectionText = text ?? selection?.text;
     setTab("explain");
+    patchPanel({ tab: "explain" }, false);
     if (image) {
-      setExplain({
+      const pending = {
         title: copy.explainFigure,
         body: "",
         selection: selectionText,
         image,
-      });
+      };
+      setExplain(pending);
+      patchPanel({ tab: "explain", explain: pending }, false);
       setRegionMode(false);
       setToast(copy.regionCaptured);
     }
@@ -486,8 +613,13 @@ export function ReaderProvider({
       });
       setExplain({ ...data, image: image || data.image });
       setSelection(null);
+      patchPanel({
+        tab: "explain",
+        explain: { ...data, image: image || data.image },
+      });
     } catch {
-      if (!image) setExplain(null);
+      if (!image) setExplain(sessionRef.current.explain);
+      else patchPanel({ tab: "explain" });
     } finally {
       setBusy(null);
     }
@@ -509,8 +641,9 @@ export function ReaderProvider({
       });
       setTranslations(data.paragraphs || []);
       setSelection(null);
+      patchPanel({ tab: "translate", translations: data.paragraphs || [], targetLanguage });
     } catch {
-      setTranslations([]);
+      /* keep previous translations */
     } finally {
       setBusy(null);
     }
@@ -532,8 +665,13 @@ export function ReaderProvider({
         summaryKind: kind,
         selection: kind === "selection" ? selection?.text : undefined,
       });
-      if (kind === "threeline") setThreeLine(data.text);
-      else setSummary(data.text);
+      if (kind === "threeline") {
+        setThreeLine(data.text);
+        patchPanel({ tab: "summary", threeLine: data.text });
+      } else {
+        setSummary(data.text);
+        patchPanel({ tab: "summary", summary: data.text });
+      }
     } catch {
       /* shown via aiError */
     } finally {
@@ -544,11 +682,15 @@ export function ReaderProvider({
   const runChat = async (content: string) => {
     const user: ChatMessage = { id: crypto.randomUUID(), role: "user", content };
     const next = [...chat, user];
-    setChat(next);
-    setTab("chat");
-    setBusy("chat");
     const assistantId = crypto.randomUUID();
-    setChat([...next, { id: assistantId, role: "assistant", content: "" }]);
+    const withAssistant: ChatMessage[] = [
+      ...next,
+      { id: assistantId, role: "assistant", content: "" },
+    ];
+    setChat(withAssistant);
+    setTab("chat");
+    patchPanel({ tab: "chat", chat: withAssistant }, false);
+    setBusy("chat");
     try {
       const res = await requestAi<Response>({
         task: "chat",
@@ -565,20 +707,28 @@ export function ReaderProvider({
         if (done) break;
         acc += decoder.decode(value, { stream: true });
         const snapshot = acc;
-        setChat((cur) =>
-          cur.map((m) => (m.id === assistantId ? { ...m, content: snapshot } : m)),
-        );
+        setChat((cur) => {
+          const nextChat = cur.map((m) =>
+            m.id === assistantId ? { ...m, content: snapshot } : m,
+          );
+          sessionRef.current = { ...sessionRef.current, tab: "chat", chat: nextChat, updatedAt: Date.now() };
+          schedulePanel();
+          return nextChat;
+        });
       }
     } catch {
-      setChat((cur) =>
-        cur.map((m) =>
+      setChat((cur) => {
+        const nextChat = cur.map((m) =>
           m.id === assistantId && !m.content
             ? { ...m, content: copy.aiError }
             : m,
-        ),
-      );
+        );
+        sessionRef.current = { ...sessionRef.current, tab: "chat", chat: nextChat, updatedAt: Date.now() };
+        return nextChat;
+      });
     } finally {
       setBusy(null);
+      flushPanel();
     }
   };
 
@@ -640,9 +790,16 @@ export function ReaderProvider({
         selection: sel,
       });
       setCitationOverride(data.citation);
-      if (sel) setLookedUp(lookupReference(data.citation, sel) || lookupReference(local, sel));
+      if (sel) {
+        const found = lookupReference(data.citation, sel) || lookupReference(local, sel);
+        setLookedUp(found);
+        patchPanel({ tab: "citation", citation: data.citation, lookedUp: found });
+      } else {
+        patchPanel({ tab: "citation", citation: data.citation });
+      }
     } catch {
       setCitationOverride(local);
+      patchPanel({ tab: "citation", citation: local });
     } finally {
       setBusy(null);
     }
@@ -659,15 +816,33 @@ export function ReaderProvider({
     if (!explain) return;
     setTab("chat");
     const seed = `Continuing from this explanation of: "${explain.selection || "the selected passage"}"\n\n${explain.body}\n\nAsk a follow-up, or tell me what is still unclear.`;
-    setChat((c) => [
-      ...c,
-      {
-        id: crypto.randomUUID(),
-        role: "assistant",
-        content: seed,
-      },
-    ]);
+    setChat((c) => {
+      const next = [
+        ...c,
+        {
+          id: crypto.randomUUID(),
+          role: "assistant" as const,
+          content: seed,
+        },
+      ];
+      patchPanel({ tab: "chat", chat: next });
+      return next;
+    });
   };
+
+  const selectTab = (next: AiTab) => {
+    setTab(next);
+    patchPanel({ tab: next });
+  };
+
+  const selectTargetLanguage = (v: string) => {
+    setTargetLanguage(v);
+    patchPanel({ targetLanguage: v });
+  };
+
+  useEffect(() => {
+    return () => flushPanel();
+  }, [flushPanel]);
 
   const value: ReaderContextValue = {
     copy,
@@ -714,14 +889,14 @@ export function ReaderProvider({
     autoTranslate,
     setAutoTranslate,
     tab,
-    setTab,
+    setTab: selectTab,
     status,
     busy,
     aiError,
     explain,
     translations,
     targetLanguage,
-    setTargetLanguage,
+    setTargetLanguage: selectTargetLanguage,
     summary,
     threeLine,
     chat,

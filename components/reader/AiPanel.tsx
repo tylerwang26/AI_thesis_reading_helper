@@ -11,6 +11,7 @@ import {
   WandSparkles,
 } from "lucide-react";
 import { useReader } from "./reader-context";
+import { MarkdownBody } from "./MarkdownBody";
 import type { AiTab, HighlightColor } from "@/lib/types";
 
 export function AiPanel() {
@@ -112,7 +113,7 @@ export function AiPanel() {
                 {explain.selection ? (
                   <p className="mb-2 text-xs italic text-violet-700">“{explain.selection}”</p>
                 ) : null}
-                {explain.body ? <Formatted text={explain.body} /> : null}
+                {explain.body ? <MarkdownBody text={explain.body} /> : null}
                 {explain.body ? (
                   <button
                     type="button"
@@ -176,7 +177,11 @@ export function AiPanel() {
                         : "mr-4 bg-violet-50 text-violet-950"
                     }`}
                   >
-                    <Formatted text={m.content || (busy === "chat" ? "…" : "")} />
+                    {m.role === "user" ? (
+                      <p className="whitespace-pre-wrap">{m.content}</p>
+                    ) : (
+                      <MarkdownBody text={m.content || (busy === "chat" ? "…" : "")} />
+                    )}
                   </div>
                 ))
               )}
@@ -191,7 +196,7 @@ export function AiPanel() {
                 {copy.threeLine}
               </summary>
               <div className="mt-2">
-                {busy === "summary" && !threeLine ? <Skeleton /> : <Formatted text={threeLine} />}
+                {busy === "summary" && !threeLine ? <Skeleton /> : <MarkdownBody text={threeLine} />}
                 <button
                   type="button"
                   className="mt-2 text-xs text-violet-700 underline"
@@ -202,7 +207,7 @@ export function AiPanel() {
               </div>
             </details>
             <div>
-              {summary ? <Formatted text={summary} /> : null}
+              {summary ? <MarkdownBody text={summary} /> : null}
               <div className="mt-2 flex gap-2 text-xs">
                 <button className="underline" type="button" onClick={() => void runSummary("keypoints")}>
                   {copy.wholePaper}
@@ -307,20 +312,6 @@ export function AiPanel() {
         </div>
       </form>
     </aside>
-  );
-}
-
-function Formatted({ text }: { text: string }) {
-  if (!text) return null;
-  const blocks = text.split(/\n{2,}/);
-  return (
-    <div className="space-y-2 text-sm leading-6 text-violet-950">
-      {blocks.map((block, i) => (
-        <p key={i} className="whitespace-pre-wrap">
-          {block}
-        </p>
-      ))}
-    </div>
   );
 }
 

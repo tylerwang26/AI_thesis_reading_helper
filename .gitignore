@@ -33,6 +33,7 @@ yarn-error.log*
 # env files (keep the example)
 .env*
 !.env.example
+.dev.vars*
 
 # generated PDF.js worker (copied in npm run prepare / dev / build)
 public/pdf.worker.min.mjs

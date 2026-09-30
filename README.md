@@ -14,6 +14,7 @@ This is an independent product. It is not affiliated with any commercial paper r
 - **Citation** cards for the paper and `[n]` references
 - **Auto highlight** of innovation / method / result spans
 - **Manual highlights and margin notes**
+- **Per-paper right panel history** — explain, translate, chat, summary, citation, and notes stay with that paper in this browser and come back when you reopen it
 - **Outline** from the PDF’s bookmarks (nested tree, click to jump). Papers without bookmarks get a page list instead
 
 Without an API key, PDFs, markup, and the library still work. AI actions show a clear empty/error state.
@@ -46,6 +47,8 @@ Copy `.env.example` to `.env.local`. Secrets never belong in the repo.
 
 Keys are read only on the server (`app/api/ai`). The browser never sees them.
 
+On the Cloudflare Worker `ai-thesis-reading-helper`, `OPENAI_API_KEY` is already a **Secret**. Redeploys keep it; do not put the value in `wrangler.jsonc` `vars` or in git. Dashboard non-secret vars are kept by `npm run cf:deploy` (`wrangler --keep-vars`).
+
 ## Scripts
 
 | Script | What it does |
@@ -55,6 +58,8 @@ Keys are read only on the server (`app/api/ai`). The browser never sees them.
 | `npm run start` | Serve the production build |
 | `npm run sample-pdf` | Regenerate `public/sample-paper.pdf` |
 | `npm run lint` | ESLint |
+| `npm test` | Panel-session restore helpers |
+| `npm run cf:deploy` | OpenNext build + `wrangler deploy --keep-vars` (keeps Worker secrets/vars) |
 
 ## Sample paper
 
@@ -66,4 +71,4 @@ Next.js (App Router) + TypeScript + Tailwind CSS + react-pdf (PDF.js) + OpenAI-c
 
 ## Privacy
 
-PDF bytes are stored locally (memory + IndexedDB library). Model requests send paper text excerpts, a selection, and optionally a cropped image of a page region.
+PDF bytes, highlights/notes, and right-panel AI history (explain, translate, chat, summary, citation) are stored locally (memory + IndexedDB, with a localStorage fallback). Model requests send paper text excerpts, a selection, and optionally a cropped image of a page region.

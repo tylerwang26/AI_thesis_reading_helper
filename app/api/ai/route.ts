@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { extractPaperCitation } from "@/lib/citations";
 import { AiConfigError, completeChat, streamChat, toOpenAiHistory } from "@/lib/openai";
-import { systemPreamble } from "@/lib/prompts";
+import { explainSummaryPreamble, systemPreamble } from "@/lib/prompts";
 import type { ChatMessage, Locale } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -73,10 +73,10 @@ async function handleExplain(
   image?: string,
 ) {
   const userText = selection
-    ? `Explain the following selection in the context of the paper. Walk through symbols, claims, and why it matters. Then give a short "if you remember one thing" line.\n\nSELECTION:\n${selection}\n\nPAPER CONTEXT:\n${context}`
+    ? `Explain the following selection in the context of the paper. Walk through symbols, claims, and why it matters. Then give a short "if you remember one thing" line. Write the entire answer in Traditional Chinese (Taiwan, 繁體中文).\n\nSELECTION:\n${selection}\n\nPAPER CONTEXT:\n${context}`
     : image
-      ? `Explain this figure, table, or equation region from the paper. Identify axes, components, and the takeaway. Use the paper context.\n\nPAPER CONTEXT:\n${context}`
-      : `Give a concise explanation of the most important idea on the provided pages.\n\nPAPER CONTEXT:\n${context}`;
+      ? `Explain this figure, table, or equation region from the paper. Identify axes, components, and the takeaway. Use the paper context. Write the entire answer in Traditional Chinese (Taiwan, 繁體中文).\n\nPAPER CONTEXT:\n${context}`
+      : `Give a concise explanation of the most important idea on the provided pages. Write the entire answer in Traditional Chinese (Taiwan, 繁體中文).\n\nPAPER CONTEXT:\n${context}`;
 
   const content = image
     ? ([
@@ -87,12 +87,12 @@ async function handleExplain(
 
   const text = await completeChat({
     messages: [
-      { role: "system", content: systemPreamble(locale) },
+      { role: "system", content: explainSummaryPreamble(locale) },
       { role: "user", content: content as never },
     ],
   });
   return {
-    title: selection ? "Explanation" : image ? "Figure explanation" : "Explanation",
+    title: selection ? "解釋" : image ? "圖表解釋" : "解釋",
     body: text,
     selection: selection || undefined,
   };
@@ -129,13 +129,13 @@ async function handleSummarize(
   const mode = kind || (selection ? "selection" : "keypoints");
   const instruction =
     mode === "threeline"
-      ? "Write exactly three short bullet points covering problem, method, and result."
+      ? "Write exactly three short bullet points covering problem, method, and result. Write the entire answer in Traditional Chinese (Taiwan, 繁體中文)."
       : mode === "selection"
-        ? "Summarize the selection in 5-8 sentences, then list 3 takeaways."
-        : "Summarize the paper: problem, method, findings, limitations. Use short headings.";
+        ? "Summarize the selection in 5-8 sentences, then list 3 takeaways. Write the entire answer in Traditional Chinese (Taiwan, 繁體中文)."
+        : "Summarize the paper: problem, method, findings, limitations. Use short headings. Write the entire answer in Traditional Chinese (Taiwan, 繁體中文).";
   const text = await completeChat({
     messages: [
-      { role: "system", content: systemPreamble(locale) },
+      { role: "system", content: explainSummaryPreamble(locale) },
       {
         role: "user",
         content: `${instruction}\n\n${selection ? `SELECTION:\n${selection}\n\n` : ""}PAPER:\n${context}`,

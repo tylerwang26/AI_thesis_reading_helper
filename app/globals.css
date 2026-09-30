@@ -51,3 +51,128 @@ body {
 .react-pdf__Page__annotations {
   pointer-events: none;
 }
+
+.md-body {
+  font-size: 0.875rem;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+
+.md-body > * + * {
+  margin-top: 0.65rem;
+}
+
+.md-body h1,
+.md-body h2,
+.md-body h3,
+.md-body h4 {
+  font-weight: 650;
+  line-height: 1.35;
+  color: inherit;
+}
+
+.md-body h1 {
+  font-size: 1.05rem;
+}
+.md-body h2 {
+  font-size: 1rem;
+}
+.md-body h3,
+.md-body h4 {
+  font-size: 0.925rem;
+}
+
+.md-body p {
+  white-space: pre-wrap;
+}
+
+.md-body ul,
+.md-body ol {
+  margin: 0;
+  padding-left: 1.2rem;
+}
+
+.md-body ul {
+  list-style: disc;
+}
+
+.md-body ol {
+  list-style: decimal;
+}
+
+.md-body li + li {
+  margin-top: 0.25rem;
+}
+
+.md-body strong {
+  font-weight: 650;
+}
+
+.md-body a {
+  color: #5b21b6;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.md-body-dark a {
+  color: #ddd6fe;
+}
+
+.md-body code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8em;
+  background: rgb(91 33 182 / 0.08);
+  border-radius: 0.3rem;
+  padding: 0.1em 0.35em;
+}
+
+.md-body pre {
+  overflow: auto;
+  border-radius: 0.75rem;
+  background: #2e1065;
+  color: #f5f3ff;
+  padding: 0.75rem 0.9rem;
+}
+
+.md-body pre code {
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  font-size: 0.75rem;
+  white-space: pre;
+}
+
+.md-body blockquote {
+  border-left: 3px solid rgb(91 33 182 / 0.35);
+  margin: 0;
+  padding-left: 0.75rem;
+  color: rgb(46 16 101 / 0.8);
+}
+
+.md-body hr {
+  border: 0;
+  border-top: 1px solid rgb(91 33 182 / 0.18);
+}
+
+.md-body .md-table-wrap {
+  overflow-x: auto;
+}
+
+.md-body table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+
+.md-body th,
+.md-body td {
+  border: 1px solid rgb(91 33 182 / 0.18);
+  padding: 0.35rem 0.5rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.md-body th {
+  background: rgb(91 33 182 / 0.08);
+  font-weight: 650;
+}

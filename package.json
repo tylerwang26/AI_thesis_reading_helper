@@ -8,7 +8,9 @@
     "start": "next start --hostname 0.0.0.0 --port 3000",
     "lint": "eslint",
     "prepare": "node scripts/copy-worker.mjs",
-    "sample-pdf": "node scripts/generate-sample-paper.mjs"
+    "sample-pdf": "node scripts/generate-sample-paper.mjs",
+    "cf:build": "opennextjs-cloudflare build",
+    "cf:deploy": "opennextjs-cloudflare deploy -- --keep-vars"
   },
   "dependencies": {
     "lucide-react": "^1.46.0",

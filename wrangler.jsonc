@@ -6,5 +6,10 @@
   "assets": {
     "directory": ".open-next/assets",
     "binding": "ASSETS"
+  },
+  // Value is already set on the Worker as a Secret and is kept across deploys.
+  // Do not put the key in `vars` or in git.
+  "secrets": {
+    "required": ["OPENAI_API_KEY"]
   }
 }

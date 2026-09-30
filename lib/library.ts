@@ -80,6 +80,8 @@ export async function deletePaper(id: string) {
   tx.objectStore(STORE).delete(id);
   await txDone(tx);
   db.close();
+  // Keep the sessions store row so reopening the same sample / same-file
+  // upload can restore explain, translate, chat, summary, and citation.
 }
 
 export async function updateHighlights(id: string, highlights: PaperHighlight[]) {

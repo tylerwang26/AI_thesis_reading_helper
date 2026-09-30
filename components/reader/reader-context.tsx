@@ -20,6 +20,16 @@ import {
   savePanel,
   updateHighlights,
 } from "@/lib/library";
+import {
+  emptyPanel,
+  filePaperId,
+  LAST_PAPER_KEY,
+  MARKS_STORAGE_KEY,
+  normalizePanel,
+  PANEL_STORAGE_KEY,
+  SAMPLE_PAPER_ID,
+  slimPanel,
+} from "@/lib/panel-session";
 import { clipContext, matchQuoteOnPage, paragraphBlocks } from "@/lib/pdf-text";
 import type {
   AiStatus,
@@ -40,25 +50,9 @@ import type {
   TranslatePair,
 } from "@/lib/types";
 
-const SAMPLE_ID = "sample";
+const SAMPLE_ID = SAMPLE_PAPER_ID;
 const SAMPLE_URL = "/sample-paper.pdf";
 const SAMPLE_NAME = "Contextual Memory Attention (sample)";
-const PANEL_KEY = (id: string) => `thesis-helper-panel:${id}`;
-
-function emptyPanel(): PaperPanelSession {
-  return {
-    tab: "explain",
-    explain: null,
-    translations: [],
-    targetLanguage: "Traditional Chinese",
-    summary: "",
-    threeLine: "",
-    chat: [],
-    citation: null,
-    lookedUp: null,
-    updatedAt: Date.now(),
-  };
-}
 
 type OpenPaper = {
   id: string;
@@ -224,29 +218,23 @@ export function ReaderProvider({
   }, [toast]);
 
   const writePanel = useCallback(async (id: string, panel: PaperPanelSession) => {
+    const next = normalizePanel(panel);
     try {
-      await savePanel(id, panel);
+      await savePanel(id, next);
     } catch {
       try {
-        await savePanel(id, {
-          ...panel,
-          explain: panel.explain ? { ...panel.explain, image: undefined } : null,
-        });
+        await savePanel(id, slimPanel(next));
       } catch {
         // ignore quota
       }
     }
     try {
-      const slim: PaperPanelSession = {
-        ...panel,
-        explain: panel.explain ? { ...panel.explain, image: undefined } : null,
-      };
-      localStorage.setItem(PANEL_KEY(id), JSON.stringify(slim));
+      localStorage.setItem(PANEL_STORAGE_KEY(id), JSON.stringify(slimPanel(next)));
     } catch {
       try {
         localStorage.setItem(
-          PANEL_KEY(id),
-          JSON.stringify({ ...panel, explain: null, chat: panel.chat.slice(-20) }),
+          PANEL_STORAGE_KEY(id),
+          JSON.stringify({ ...slimPanel(next), explain: null, chat: next.chat.slice(-20) }),
         );
       } catch {
         // ignore
@@ -255,14 +243,14 @@ export function ReaderProvider({
   }, []);
 
   const flushPanel = useCallback(
-    (id?: string | null) => {
+    async (id?: string | null) => {
       const pid = id ?? paperRef.current?.id;
       if (!pid) return;
       if (persistTimer.current) {
         window.clearTimeout(persistTimer.current);
         persistTimer.current = null;
       }
-      void writePanel(pid, sessionRef.current);
+      await writePanel(pid, sessionRef.current);
     },
     [writePanel],
   );
@@ -282,8 +270,12 @@ export function ReaderProvider({
 
   const patchPanel = useCallback(
     (partial: Partial<PaperPanelSession>, immediate = true) => {
-      sessionRef.current = { ...sessionRef.current, ...partial, updatedAt: Date.now() };
-      if (immediate) flushPanel();
+      sessionRef.current = normalizePanel({
+        ...sessionRef.current,
+        ...partial,
+        updatedAt: Date.now(),
+      });
+      if (immediate) void flushPanel();
       else schedulePanel();
     },
     [flushPanel, schedulePanel],
@@ -292,20 +284,20 @@ export function ReaderProvider({
   const readStoredPanel = useCallback(async (id: string): Promise<PaperPanelSession | null> => {
     try {
       const stored = await getPanel(id);
-      if (stored) return stored;
+      if (stored) return normalizePanel(stored);
     } catch {
       // ignore
     }
     try {
-      const raw = localStorage.getItem(PANEL_KEY(id));
-      return raw ? (JSON.parse(raw) as PaperPanelSession) : null;
+      const raw = localStorage.getItem(PANEL_STORAGE_KEY(id));
+      return raw ? normalizePanel(JSON.parse(raw)) : null;
     } catch {
       return null;
     }
   }, []);
 
   const applyPanel = useCallback((panel: PaperPanelSession | null) => {
-    const next = panel ?? emptyPanel();
+    const next = normalizePanel(panel);
     sessionRef.current = next;
     setTab(next.tab || "explain");
     setExplain(next.explain);
@@ -321,7 +313,7 @@ export function ReaderProvider({
 
   const persistHighlights = useCallback(
     async (id: string, next: PaperHighlight[], inLibrary: boolean) => {
-      localStorage.setItem(`thesis-helper-marks:${id}`, JSON.stringify(next));
+      localStorage.setItem(MARKS_STORAGE_KEY(id), JSON.stringify(next));
       if (inLibrary) {
         try {
           await updateHighlights(id, next);
@@ -334,22 +326,35 @@ export function ReaderProvider({
   );
 
   const loadHighlights = useCallback((id: string, stored?: PaperHighlight[]) => {
-    if (stored?.length) {
+    if (Array.isArray(stored)) {
       setHighlights(stored);
       return;
     }
     try {
-      const raw = localStorage.getItem(`thesis-helper-marks:${id}`);
+      const raw = localStorage.getItem(MARKS_STORAGE_KEY(id));
       setHighlights(raw ? (JSON.parse(raw) as PaperHighlight[]) : []);
     } catch {
       setHighlights([]);
     }
   }, []);
 
+  const rememberPaper = useCallback((id: string) => {
+    try {
+      localStorage.setItem(LAST_PAPER_KEY, id);
+    } catch {
+      // ignore
+    }
+  }, []);
+
   const openBlob = useCallback(
-    (meta: { id: string; name: string; blob: Blob; isSample?: boolean; inLibrary: boolean }) => {
-      if (paperRef.current?.id && paperRef.current.id !== meta.id) {
-        flushPanel(paperRef.current.id);
+    async (meta: { id: string; name: string; blob: Blob; isSample?: boolean; inLibrary: boolean }) => {
+      const currentId = paperRef.current?.id;
+      if (currentId && currentId !== meta.id) {
+        await flushPanel(currentId);
+      }
+      if (currentId === meta.id && urlRef.current) {
+        rememberPaper(meta.id);
+        return false;
       }
       if (urlRef.current) URL.revokeObjectURL(urlRef.current);
       const url = URL.createObjectURL(meta.blob);
@@ -363,6 +368,7 @@ export function ReaderProvider({
         inLibrary: meta.inLibrary,
       };
       paperRef.current = nextPaper;
+      rememberPaper(meta.id);
       setPaper(nextPaper);
       setPage(1);
       setNumPages(0);
@@ -371,8 +377,9 @@ export function ReaderProvider({
       setOutlineReady(false);
       setOutlineJump(null);
       setActiveOutlineId(null);
+      return true;
     },
-    [flushPanel],
+    [flushPanel, rememberPaper],
   );
 
   const persistOpened = useCallback(
@@ -388,7 +395,7 @@ export function ReaderProvider({
         lastOpened: Date.now(),
         isSample: meta.isSample,
         blob: meta.blob,
-        highlights: nextHighlights.length ? nextHighlights : existing?.highlights || [],
+        highlights: nextHighlights,
         pageCount: existing?.pageCount,
       });
     },
@@ -402,43 +409,49 @@ export function ReaderProvider({
     let marks = saved?.highlights || [];
     if (!marks.length) {
       try {
-        const raw = localStorage.getItem(`thesis-helper-marks:${SAMPLE_ID}`);
+        const raw = localStorage.getItem(MARKS_STORAGE_KEY(SAMPLE_ID));
         marks = raw ? (JSON.parse(raw) as PaperHighlight[]) : [];
       } catch {
         marks = [];
       }
     }
     const savedPanel = await readStoredPanel(SAMPLE_ID);
-    openBlob({
+    const switched = await openBlob({
       id: SAMPLE_ID,
       name: SAMPLE_NAME,
       blob,
       isSample: true,
       inLibrary: true,
     });
-    loadHighlights(SAMPLE_ID, marks);
-    applyPanel(savedPanel);
-    await persistOpened(
-      { id: SAMPLE_ID, name: SAMPLE_NAME, blob, isSample: true },
-      marks,
-    );
+    if (switched) {
+      loadHighlights(SAMPLE_ID, marks);
+      applyPanel(savedPanel);
+      await persistOpened(
+        { id: SAMPLE_ID, name: SAMPLE_NAME, blob, isSample: true },
+        marks,
+      );
+    } else {
+      await flushPanel(SAMPLE_ID);
+    }
     await refreshLibrary();
-  }, [applyPanel, loadHighlights, openBlob, persistOpened, readStoredPanel, refreshLibrary]);
+  }, [applyPanel, flushPanel, loadHighlights, openBlob, persistOpened, readStoredPanel, refreshLibrary]);
 
   const openFromLibrary = useCallback(
     async (id: string) => {
       const row = await getPaper(id);
       if (!row) return;
       const savedPanel = await readStoredPanel(id);
-      openBlob({
+      const switched = await openBlob({
         id: row.id,
         name: row.name,
         blob: row.blob,
         isSample: row.isSample,
         inLibrary: true,
       });
-      loadHighlights(row.id, row.highlights);
-      applyPanel(savedPanel);
+      if (switched) {
+        loadHighlights(row.id, row.highlights);
+        applyPanel(savedPanel);
+      }
       await savePaper({ ...row, lastOpened: Date.now() });
       await refreshLibrary();
     },
@@ -447,21 +460,52 @@ export function ReaderProvider({
 
   const onFile = useCallback(
     async (file: File) => {
-      const id = crypto.randomUUID();
-      openBlob({ id, name: file.name, blob: file, inLibrary: true });
-      loadHighlights(id);
-      applyPanel(null);
-      await persistOpened({ id, name: file.name, blob: file }, []);
+      const id = filePaperId(file);
+      const existing = await getPaper(id).catch(() => null);
+      let marks = existing?.highlights || [];
+      if (!marks.length) {
+        try {
+          const raw = localStorage.getItem(MARKS_STORAGE_KEY(id));
+          marks = raw ? (JSON.parse(raw) as PaperHighlight[]) : [];
+        } catch {
+          marks = [];
+        }
+      }
+      const savedPanel = await readStoredPanel(id);
+      const switched = await openBlob({ id, name: file.name, blob: file, inLibrary: true });
+      if (switched) {
+        loadHighlights(id, marks);
+        applyPanel(savedPanel);
+        await persistOpened({ id, name: file.name, blob: file }, marks);
+      } else {
+        await flushPanel(id);
+      }
       await refreshLibrary();
       setLeftMode("library");
       setToast(copy.saved);
     },
-    [copy.saved, applyPanel, loadHighlights, openBlob, persistOpened, refreshLibrary],
+    [copy.saved, applyPanel, flushPanel, loadHighlights, openBlob, persistOpened, readStoredPanel, refreshLibrary],
   );
 
+  const bootstrapped = useRef(false);
   useEffect(() => {
-    if (initialSample) void openSample();
-  }, [initialSample, openSample]);
+    if (bootstrapped.current) return;
+    bootstrapped.current = true;
+    void (async () => {
+      if (initialSample) {
+        await openSample();
+        return;
+      }
+      try {
+        const last = localStorage.getItem(LAST_PAPER_KEY);
+        if (!last) return;
+        if (last === SAMPLE_ID) await openSample();
+        else await openFromLibrary(last);
+      } catch {
+        // ignore
+      }
+    })();
+  }, [initialSample, openFromLibrary, openSample]);
 
   useEffect(() => {
     const input = fileInputRef.current;
@@ -841,7 +885,19 @@ export function ReaderProvider({
   };
 
   useEffect(() => {
-    return () => flushPanel();
+    const persistNow = () => {
+      void flushPanel();
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") persistNow();
+    };
+    window.addEventListener("pagehide", persistNow);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("pagehide", persistNow);
+      document.removeEventListener("visibilitychange", onVisibility);
+      persistNow();
+    };
   }, [flushPanel]);
 
   const value: ReaderContextValue = {

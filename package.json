@@ -7,6 +7,7 @@
     "build": "node scripts/copy-worker.mjs && next build",
     "start": "next start --hostname 0.0.0.0 --port 3000",
     "lint": "eslint",
+    "test": "node --experimental-strip-types --test lib/panel-session.test.ts",
     "prepare": "node scripts/copy-worker.mjs",
     "sample-pdf": "node scripts/generate-sample-paper.mjs",
     "cf:build": "opennextjs-cloudflare build",

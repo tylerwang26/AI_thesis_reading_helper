@@ -45,7 +45,8 @@ const en = {
   featMarkupBody:
     "Color-code sentences and leave margin notes, then find them again when you reopen the file.",
   featLibraryTitle: "Library",
-  featLibraryBody: "Save opened PDFs in this browser and reopen them with your marks intact.",
+  featLibraryBody:
+    "Save opened PDFs in this browser and reopen them with highlights, notes, and the right-panel explain / translate / chat / summary / citation history still there.",
   featOutlineTitle: "Outline",
   featOutlineBody:
     "Jump through the paper’s table of contents on the left. If the PDF has no bookmarks, a page list still lets you move around.",
@@ -178,7 +179,8 @@ const zh: Messages = {
   featMarkupTitle: "螢光筆與註記",
   featMarkupBody: "為句子上色、寫邊註，下次重開檔案時仍在。",
   featLibraryTitle: "圖書館",
-  featLibraryBody: "把已開啟的 PDF 存在這個瀏覽器，連同標記一起重開。",
+  featLibraryBody:
+    "把已開啟的 PDF 存在這個瀏覽器；螢光筆、註記，以及右側解釋／翻譯／對話／摘要／引用紀錄，下次打開同一篇都還在。",
   featOutlineTitle: "大綱",
   featOutlineBody: "在左側依論文目錄跳頁。若 PDF 沒有書籤，仍可用頁碼列表導覽。",
   featOutlineHow: "開啟論文後，使用左側「大綱」。點選項目即可捲到該目的地。",
